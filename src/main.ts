@@ -9,6 +9,8 @@ async function boot() {
   const game = new Game(canvas, ui);
   game.loadCourse(game.course);
   game.start();
+  // Exposed for debugging and automated screenshots in dev builds.
+  if (import.meta.env.DEV) (window as unknown as { __game: Game }).__game = game;
 }
 
 boot();

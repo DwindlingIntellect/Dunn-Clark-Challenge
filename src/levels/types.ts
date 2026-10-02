@@ -38,7 +38,7 @@ export type PieceType =
   /** Wall with pointed-arch window openings (visual); collides as a solid box. */
   | 'windowwall';
 
-export type MaterialName = 'stone' | 'flagstone' | 'darkstone' | 'wood' | 'iron' | 'ivory' | 'glass' | 'bone';
+export type MaterialName = 'stone' | 'flagstone' | 'darkstone' | 'wood' | 'iron' | 'ivory' | 'glass' | 'bone' | 'slate';
 
 /**
  * Tags:
@@ -60,6 +60,8 @@ export interface Piece {
   rot?: number;
   tags?: PieceTag[];
   mat?: MaterialName;
+  /** Stamp `count` copies, each offset by `step`. Copies get ids `${id}.0`, `${id}.1`, … */
+  repeat?: { count: number; step: Vec3 };
 }
 
 /**

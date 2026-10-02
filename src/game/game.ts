@@ -5,10 +5,12 @@ import { movement } from '../config/movement';
 import { CollisionWorld } from '../sim/collision';
 import { PlayerController } from '../sim/controller';
 import { courseColliders } from '../levels/colliders';
-import { allCourses, courseById } from '../levels/index';
+import { allCourses, courseById, onCourseHotUpdate } from '../levels/index';
+import { RunState } from './runState';
+import { buildLevel, LANTERN_LIT, LANTERN_UNLIT, type LevelVisuals } from '../render/levelBuilder';
 import type { CourseData } from '../levels/types';
 import { CameraFeel } from './cameraFeel';
-import { colliderGeometry, colliderWireframe } from '../render/colliderGeometry';
+import { colliderWireframe } from '../render/colliderGeometry';
 import { DebugMenu, type DebugHost } from '../debug/debugMenu';
 import { FreeFly } from '../debug/freeFly';
 import type GUI from 'lil-gui';
@@ -16,8 +18,7 @@ import { PsxPipeline } from '../render/psxPipeline';
 import { Sky } from '../render/sky';
 import { ATMOSPHERES } from '../render/atmosphere';
 import { applyAtmosphere, PointLights } from '../render/lighting';
-import { getMaterial, psxUniforms, type MatKey } from '../render/materials';
-import { finalize, merge } from '../render/geomUtil';
+import { psxUniforms } from '../render/materials';
 import { psx } from '../config/render';
 
 /**
@@ -39,6 +40,8 @@ export class Game implements DebugHost {
   course!: CourseData;
   world!: CollisionWorld;
   player!: PlayerController;
+  run!: RunState;
+  private visuals: LevelVisuals | null = null;
   /** Simulation is frozen (debug menu open). */
   paused = false;
   /** The current run has had the debug menu opened (never saves a best time). */
@@ -78,6 +81,9 @@ export class Game implements DebugHost {
     this.loop = new FixedLoop({ tick: (dt) => this.tick(dt), render: (a, fdt) => this.render(a, fdt) });
     this.course = allCourses()[0];
     this.debug = new DebugMenu(this);
+    onCourseHotUpdate((c) => {
+      if (c.id === this.course.id) this.loadCourse(c, true);
+    });
   }
 
   // ------------------------------------------------------------ DebugHost
@@ -131,46 +137,57 @@ export class Game implements DebugHost {
 
   // ---------------------------------------------------------------- course
 
-  loadCourse(course: CourseData): void {
+  loadCourse(course: CourseData, keepPlayer = false): void {
+    const prev = keepPlayer && this.player ? { pos: this.player.pos.clone(), vel: this.player.vel.clone() } : null;
     this.course = course;
     this.world?.dispose();
     const descs = courseColliders(course);
     this.world = new CollisionWorld(descs);
     this.player = new PlayerController(this.world, movement);
+    const prevRun = keepPlayer ? this.run : null;
+    this.run = new RunState(course, this.player);
+
+    if (this.visuals) {
+      this.levelRoot.remove(this.visuals.root);
+      this.visuals.dispose();
+    }
     this.levelRoot.clear();
     const atmo = ATMOSPHERES[course.atmosphere];
     applyAtmosphere(atmo);
     this.sky.apply(atmo);
-    this.lights.set(course.lights ?? []);
-    const byMat = new Map<MatKey, THREE.BufferGeometry[]>();
-    for (const d of descs) {
-      const key: MatKey = d.tags.includes('wallrun') ? 'ivory' : d.kind === 'ramp' ? 'grayDark' : 'gray';
-      const g = finalize(colliderGeometry(d), { maxEdge: 3, aoBaseY: d.center[1] - d.half[1] });
-      if (!byMat.has(key)) byMat.set(key, []);
-      byMat.get(key)!.push(g);
-    }
-    for (const [key, list] of byMat) {
-      const g = merge(list);
-      if (g) this.levelRoot.add(new THREE.Mesh(g, getMaterial(key)));
-    }
-    const bell = new THREE.Mesh(finalize(new THREE.ConeGeometry(0.8, 1.2, 8)), getMaterial('bronze'));
-    bell.position.set(course.finish.pos[0], course.finish.pos[1] + 2, course.finish.pos[2]);
-    this.levelRoot.add(bell);
+    this.visuals = buildLevel(course);
+    this.levelRoot.add(this.visuals.root);
+    this.lights.set(this.visuals.lights);
     this.wireframe = colliderWireframe(descs);
     this.wireframe.visible = this.showColliders;
     this.levelRoot.add(this.wireframe);
     this.debug?.buildCourseFolder();
-    this.restart();
+    if (prev && prevRun) {
+      // Hot reload: keep the run going where the player is.
+      this.run.ticks = prevRun.ticks;
+      this.run.started = prevRun.started;
+      this.run.debug = prevRun.debug;
+      this.player.reset(prev.pos, this.input.yaw);
+      this.player.vel.copy(prev.vel);
+      this.snapCamera();
+    } else {
+      this.restart();
+    }
   }
 
   restart(): void {
     const s = this.course.start;
-    this.player.reset(s.pos, (s.yaw * Math.PI) / 180);
+    this.run.reset();
+    this.updateLanterns();
     this.input.yaw = (s.yaw * Math.PI) / 180;
     this.input.pitch = 0;
     this.feel.reset();
     this.runIsDebug = this.debug?.open ?? false;
     this.snapCamera();
+  }
+
+  private updateLanterns(): void {
+    this.visuals?.lanterns.forEach((l, i) => l.glow.uniforms.uTint.value.setHex(this.run.activated[i] ? LANTERN_LIT : LANTERN_UNLIT));
   }
 
   private snapCamera(): void {
@@ -191,9 +208,21 @@ export class Game implements DebugHost {
       return;
     }
     this.prevEye.copy(this.currEye);
-    this.player.step(this.input.sample(), dt);
+    this.run.step(this.input.sample(), dt);
     for (const e of this.player.events) this.feel.onEvent(e);
-    if (this.player.pos.y < this.course.killY) this.restart();
+    for (const e of this.run.events) {
+      if (e.type === 'checkpoint') {
+        this.updateLanterns();
+        this.pipeline.flash = 0.35;
+      } else if (e.type === 'respawn') {
+        const r = this.run.respawnPoint();
+        this.input.yaw = (r.yaw * Math.PI) / 180;
+        this.input.pitch = 0;
+        this.feel.reset();
+        this.player.eyePosition(this.currEye);
+        this.prevEye.copy(this.currEye);
+      }
+    }
     this.player.eyePosition(this.currEye);
   }
 
@@ -215,6 +244,7 @@ export class Game implements DebugHost {
     this.sky.follow(this.camera);
     this.sky.setHorizon(psxUniforms.uFogColor.value);
     this.time += frameDt;
+    this.pipeline.flash = Math.max(0, this.pipeline.flash - frameDt * 1.5);
     psxUniforms.uTime.value = this.time;
     this.lights.update(this.time);
     this.pipeline.render(this.scene, this.camera);

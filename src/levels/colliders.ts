@@ -32,6 +32,7 @@ const SOLID_BY_DEFAULT: Partial<Record<PieceType, boolean>> = {
   walkway: true,
   roof: true,
   windowwall: true,
+  arch: true,
 };
 
 export const RAIL_HEIGHT = 1.0;
@@ -97,6 +98,15 @@ export function pieceColliders(p: Piece): ColliderDesc[] {
     }
     case 'pillar':
       return [box(p, [0, h / 2, 0], [w * 0.45, h / 2, d * 0.45])];
+    case 'arch': {
+      // Two jambs and a lintel above the apex; the opening stays clear.
+      const g = archGeometry(w, h);
+      return [
+        box(p, [-(w / 2 - g.jamb / 2), h / 2, 0], [g.jamb / 2, h / 2, d / 2]),
+        box(p, [w / 2 - g.jamb / 2, h / 2, 0], [g.jamb / 2, h / 2, d / 2]),
+        box(p, [0, (g.apex + h) / 2, 0], [g.opening / 2, (h - g.apex) / 2, d / 2]),
+      ];
+    }
     case 'walkway': {
       const out = [box(p, [0, h / 2, 0], [w / 2, h / 2, d / 2])];
       if (!(p.tags ?? []).includes('norails')) {
@@ -114,8 +124,43 @@ export function pieceColliders(p: Piece): ColliderDesc[] {
   }
 }
 
+/** Expand `repeat` pieces into individual pieces. */
+export function expandPieces(pieces: Piece[]): Piece[] {
+  const out: Piece[] = [];
+  for (const p of pieces) {
+    if (!p.repeat) {
+      out.push(p);
+      continue;
+    }
+    const { count, step } = p.repeat;
+    for (let i = 0; i < count; i++) {
+      out.push({
+        ...p,
+        repeat: undefined,
+        id: p.id ? `${p.id}.${i}` : undefined,
+        pos: [p.pos[0] + step[0] * i, p.pos[1] + step[1] * i, p.pos[2] + step[2] * i],
+      });
+    }
+  }
+  return out;
+}
+
+/** Shared arch proportions (used by both the collider and the visual kit). */
+export function archGeometry(w: number, h: number): { jamb: number; opening: number; apex: number; spring: number } {
+  const jamb = Math.min(1.2, w * 0.15);
+  const opening = w - 2 * jamb;
+  const apex = h - Math.max(0.6, h * 0.1);
+  const spring = Math.max(0.5, apex - opening * 0.95);
+  return { jamb, opening, apex, spring };
+}
+
 export function courseColliders(course: CourseData): ColliderDesc[] {
-  return course.pieces.flatMap(pieceColliders);
+  return expandPieces(course.pieces).flatMap(pieceColliders);
+}
+
+/** Look up a (possibly repeated) piece by id. */
+export function findPiece(course: CourseData, id: string): Piece | undefined {
+  return expandPieces(course.pieces).find((p) => p.id === id);
 }
 
 export interface AABB {
