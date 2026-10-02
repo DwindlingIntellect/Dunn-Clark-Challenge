@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "record": "RECORD=1 vitest run tests/smoke.test.ts"
+    "record": "RECORD=1 vitest run tests/smoke.test.ts",
+    "build:single": "npm run build && node scripts/build-single.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.21.0",

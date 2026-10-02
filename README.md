@@ -7,7 +7,15 @@ above the clouds. Every course has a safe route and at least one risky shortcut.
 Everything is generated in code: geometry, 64×64 textures, lighting and synthesized audio. There are
 no model, image or sound files.
 
-## Install and run
+## Play (no install)
+
+Download [`release/AshenSpire.html`](release/AshenSpire.html) and double-click it. The whole game is
+in that single file and runs offline in Chrome, Edge or Firefox. Click **Begin**, then click into the
+game to capture the mouse.
+
+To rebuild that file after changing the code, run `npm run build:single`.
+
+## Install and run (for development)
 
 Requires Node.js 20 or newer.
 

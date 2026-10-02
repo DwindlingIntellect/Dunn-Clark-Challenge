@@ -13,6 +13,16 @@ a human to play it. Organized by area.
   It was used to check every course, every menu and the PSX pipeline. SwiftShader runs on the CPU, so
   its frame rate (about 15 fps) says nothing about real hardware.
 
+## Distribution
+
+- **Single-file build instead of an .exe.** `npm run build:single` packs the production build into
+  `release/AshenSpire.html`, with the JS and CSS inlined, so players can double-click it with no
+  server or install. It works from `file://` because nothing loads at runtime: Rapier's WASM is
+  already embedded as base64. An Electron .exe would add about 100 MB and per-platform builds for no
+  gameplay benefit.
+- **The built file is committed** (about 5 MB) so it can be downloaded straight from GitHub. Rebuild
+  and recommit it after changes.
+
 ## Dependencies
 
 - Runtime: `three` 0.186, `@dimforge/rapier3d-compat` 0.21 (collision queries only), `lil-gui` 0.21.
