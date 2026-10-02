@@ -5,10 +5,9 @@ a human to play it. Organized by area.
 
 ## Environment and repository
 
-- **Pushing is blocked.** Every `git push` to `DwindlingIntellect/Dunn-Clark-Challenge` was rejected
-  with HTTP 403 ("Claude doesn't have GitHub access to this repository"). All ten milestones are
-  committed locally on `claude/dreamy-hypatia-h6qj8l`, one commit per milestone. Pushing needs the
-  Claude GitHub App installed on the repository, or GitHub reconnected in claude.ai settings.
+- **Pushing was blocked during development.** `git push` returned HTTP 403 (no GitHub access for
+  Claude) until GitHub access was fixed after Milestone 10. All milestones were committed locally,
+  one commit each, and pushed together afterwards.
 - **Headless screenshots worked.** I used the globally installed Playwright with Chromium and
   SwiftShader WebGL (`scripts/screenshot.mjs`, a dev-only helper that is not a project dependency).
   It was used to check every course, every menu and the PSX pipeline. SwiftShader runs on the CPU, so
@@ -221,7 +220,6 @@ Medals come from the autopilot's near-optimal route times:
 
 ## Known issues
 
-- The push to GitHub is blocked (see Environment).
 - 60 fps on a mid-range laptop is *expected* but not measured on a real GPU. The triangle counts and
   draw calls are modest, and the simulation costs about 0.1 ms per tick in Node.
 - Affine texture warping is still noticeable on big surfaces close to the camera. That is
