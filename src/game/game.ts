@@ -54,6 +54,8 @@ export class Game implements DebugHost, MenuActions {
   onSimEvent: ((e: SimEvent, game: Game) => void) | null = null;
   onRunEvent: ((type: 'checkpoint' | 'respawn' | 'finish' | 'restart' | 'start', game: Game) => void) | null = null;
   onCourseLoaded: ((c: CourseData) => void) | null = null;
+  /** Per-frame hook (continuous audio). */
+  onFrame: ((dt: number, game: Game) => void) | null = null;
 
   mode: GameMode = 'title';
   course!: CourseData;
@@ -106,6 +108,11 @@ export class Game implements DebugHost, MenuActions {
     onCourseHotUpdate((c) => {
       if (c.id === this.course.id) this.loadCourse(c, true);
     });
+  }
+
+  /** True while the run is live and the simulation is advancing. */
+  get simRunning(): boolean {
+    return this.simActive();
   }
 
   start(): void {
@@ -429,6 +436,7 @@ export class Game implements DebugHost, MenuActions {
       if (this.pipeline.flash === 0) this.pipeline.flashColor.setHex(0xffd890);
     }
     this.pipeline.render(this.scene, this.camera);
+    this.onFrame?.(frameDt, this);
 
     // Readouts / HUD
     this.fpsAcc += frameDt;
