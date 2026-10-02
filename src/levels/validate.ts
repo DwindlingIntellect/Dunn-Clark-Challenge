@@ -1,7 +1,21 @@
 import type { MovementConfig } from '../config/movement';
-import { apex, envelopeFor, reachAt, type Capabilities } from '../sim/capabilities';
-import { findPiece, pieceAABB, type AABB } from './colliders';
-import type { CourseData, JumpLink } from './types';
+import { apex, boostEnvelope, envelopeFor, reachAt, type Capabilities, type Envelope } from '../sim/capabilities';
+import { findPiece, pieceAABB, pieceSize, type AABB } from './colliders';
+import type { CourseData, JumpLink, MoveType, Piece } from './types';
+
+const SLOPED = new Set(['ramp', 'stairs', 'roof']);
+
+/**
+ * Height of the surface used by a link: landing on a slope only requires
+ * reaching its low edge; boost jumps leave from a slope's low edge;
+ * everything else uses the top of the piece.
+ */
+export function surfaceHeight(p: Piece, role: 'from' | 'to', move: MoveType): number {
+  if (SLOPED.has(p.type) && (role === 'to' || move === 'boost-jump')) return p.pos[1];
+  return pieceAABB(p).max[1];
+}
+
+const boostCache = new Map<string, Envelope>();
 
 /** Safety margin every intended jump must clear. */
 export const LINK_MARGIN = 1.15;
@@ -33,7 +47,7 @@ export function checkLink(course: CourseData, link: JumpLink, caps: Capabilities
   const a = pieceAABB(from);
   const b = pieceAABB(to);
   const gap = footprintGap(a, b);
-  const dy = b.max[1] - a.max[1];
+  const dy = surfaceHeight(to, 'to', link.move) - surfaceHeight(from, 'from', link.move);
   const dyReq = dy > 0 ? dy * LINK_MARGIN : dy;
   const gapReq = gap * LINK_MARGIN;
 
@@ -62,6 +76,21 @@ export function checkLink(course: CourseData, link: JumpLink, caps: Capabilities
       }
       const reach = reachAt(caps.wallRun, dyReq);
       return { ok: reach >= gapReq, gap, dy, available: reach, required: gapReq, detail: `wallrun: gap ${gapReq.toFixed(2)} vs reach ${reach.toFixed(2)} at dy ${dy.toFixed(2)}` };
+    }
+    case 'boost-jump': {
+      const slope = findPiece(course, link.via ?? link.from);
+      if (!slope || (slope.type !== 'ramp' && slope.type !== 'stairs')) {
+        return { ok: false, gap, dy, available: 0, required: gapReq, detail: 'boost-jump needs a ramp/stairs piece as `from` or `via`' };
+      }
+      const [, h, run] = pieceSize(slope);
+      const key = `${h}:${run}:${JSON.stringify(cfg)}`;
+      let env = boostCache.get(key);
+      if (!env) {
+        env = boostEnvelope(cfg, h, run);
+        boostCache.set(key, env);
+      }
+      const reach = reachAt(env, dyReq);
+      return { ok: reach >= gapReq, gap, dy, available: reach, required: gapReq, detail: `boost-jump: gap ${gapReq.toFixed(2)} vs reach ${reach.toFixed(2)} at dy ${dy.toFixed(2)}` };
     }
     default: {
       const env = envelopeFor(caps, link.move);

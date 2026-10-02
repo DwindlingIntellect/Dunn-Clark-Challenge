@@ -2,6 +2,10 @@ import type { CourseData } from './types';
 import { testCourse } from './testCourse';
 import { course1 } from './course1';
 import { course2 } from './course2';
+import { course3 } from './course3';
+import { course4 } from './course4';
+import { course5 } from './course5';
+import { course6 } from './course6';
 
 /**
  * Course registry. Campaign courses unlock in this order.
@@ -10,7 +14,7 @@ import { course2 } from './course2';
  * module, we swap it into the registry and notify listeners (the game
  * rebuilds the level in place without a page refresh).
  */
-export const COURSES: CourseData[] = [course1, course2];
+export const COURSES: CourseData[] = [course1, course2, course3, course4, course5, course6];
 
 export function allCourses(): CourseData[] {
   return [...COURSES, testCourse];
@@ -37,7 +41,7 @@ function swapIn(updated: CourseData): void {
 }
 
 if (import.meta.hot) {
-  import.meta.hot.accept(['./course1', './course2', './testCourse'], (mods) => {
+  import.meta.hot.accept(['./course1', './course2', './course3', './course4', './course5', './course6', './testCourse'], (mods) => {
     for (const m of mods) {
       if (!m) continue;
       for (const value of Object.values(m)) {

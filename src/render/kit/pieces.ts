@@ -158,7 +158,7 @@ function buildRoof(s: PartSink, p: Piece): void {
     s.add('slate', mk(slope));
     s.add('stone', mk(rest));
   }
-  s.add('iron', box(0.25, 0.2, d + 0.2, 0, h + 0.05, 0), { ao: false });
+  s.add('iron', box(0.25, 0.2, d + 0.2, 0, h - 0.11, 0), { ao: false });
 }
 
 function buildPillar(s: PartSink, p: Piece): void {

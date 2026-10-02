@@ -129,6 +129,31 @@ function maxClimbHeight(cfg: MovementConfig, allowCling: boolean): number {
   return lo;
 }
 
+/**
+ * Run at full speed over the crest of a ramp of height `h` and horizontal
+ * length `run`, slide down it and jump at its low edge. Envelope x/y are
+ * measured from the low edge.
+ */
+export function boostEnvelope(cfg: MovementConfig, h: number, run: number): Envelope {
+  const ramp: Piece = { type: 'ramp', pos: [0, 0, run / 2], size: [8, h, run], rot: 180 };
+  const top: Piece = { type: 'block', pos: [0, h - 1, run + 15], size: [8, 1, 30] };
+  const w = world([ramp, top]);
+  const pc = new PlayerController(w, cfg);
+  pc.reset(new Vector3(0, h, run + 28), 0);
+  let t = 0;
+  let jumped = false;
+  while (!jumped && t < 3000) {
+    const crouch = pc.pos.z < run + 0.5;
+    const jump = pc.pos.z <= 0.05;
+    pc.step(inp({ forward: 1, crouch, jump }), DT);
+    if (jump) jumped = true;
+    t++;
+  }
+  const pts = record(pc, () => inp({ forward: 1 }));
+  w.dispose();
+  return { points: pts.filter(([x]) => x >= 0) };
+}
+
 export interface Capabilities {
   runJump: Envelope;
   slideJump: Envelope;

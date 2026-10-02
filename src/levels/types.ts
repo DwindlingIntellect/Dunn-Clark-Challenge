@@ -73,6 +73,11 @@ export type MoveType =
   | 'run-jump'
   /** Jump out of a slide (max speed + slide boost). */
   | 'slide-jump'
+  /**
+   * Slide down a ramp/stairs piece (`from`, or `via`) and jump at its low
+   * edge. Validated by simulating that exact slope.
+   */
+  | 'boost-jump'
   /** Walk/run off an edge onto something lower. */
   | 'drop'
   /** Climb a ledge by mantling (optionally after a jump). */
