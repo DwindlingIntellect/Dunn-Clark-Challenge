@@ -11,6 +11,14 @@ import { CameraFeel } from './cameraFeel';
 import { colliderGeometry, colliderWireframe } from '../render/colliderGeometry';
 import { DebugMenu, type DebugHost } from '../debug/debugMenu';
 import { FreeFly } from '../debug/freeFly';
+import type GUI from 'lil-gui';
+import { PsxPipeline } from '../render/psxPipeline';
+import { Sky } from '../render/sky';
+import { ATMOSPHERES } from '../render/atmosphere';
+import { applyAtmosphere, PointLights } from '../render/lighting';
+import { getMaterial, psxUniforms, type MatKey } from '../render/materials';
+import { finalize, merge } from '../render/geomUtil';
+import { psx } from '../config/render';
 
 /**
  * Top-level game object. Simulation runs on the fixed loop; rendering
@@ -20,7 +28,10 @@ export class Game implements DebugHost {
   readonly input: Input;
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(75, 4 / 3, 0.05, 1000);
+  readonly camera = new THREE.PerspectiveCamera(75, 4 / 3, 0.05, 1200);
+  readonly pipeline: PsxPipeline;
+  readonly sky = new Sky();
+  readonly lights = new PointLights();
   readonly feel = new CameraFeel(movement);
   readonly loop: FixedLoop;
   readonly debug: DebugMenu;
@@ -40,20 +51,18 @@ export class Game implements DebugHost {
   private currEye = new THREE.Vector3();
   private hud: HTMLDivElement;
   private fpsAcc = 0;
+  private time = 0;
   private fpsFrames = 0;
 
   constructor(canvas: HTMLCanvasElement, ui: HTMLElement) {
     this.input = new Input(canvas);
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
     this.renderer.setPixelRatio(1);
+    this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
     this.camera.rotation.order = 'YXZ';
+    this.pipeline = new PsxPipeline(this.renderer);
     this.scene.add(this.levelRoot);
-    this.scene.background = new THREE.Color(0x202630);
-    this.scene.fog = new THREE.Fog(0x202630, 20, 160);
-    this.scene.add(new THREE.HemisphereLight(0xc8d0e0, 0x303030, 1.2));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.2);
-    sun.position.set(0.4, 1, 0.3);
-    this.scene.add(sun);
+    this.scene.add(this.sky.mesh);
     this.hud = document.createElement('div');
     this.hud.style.cssText = 'position:absolute;left:12px;bottom:10px;font:14px monospace;color:#dde;text-shadow:1px 1px #000';
     ui.appendChild(this.hud);
@@ -129,12 +138,22 @@ export class Game implements DebugHost {
     this.world = new CollisionWorld(descs);
     this.player = new PlayerController(this.world, movement);
     this.levelRoot.clear();
+    const atmo = ATMOSPHERES[course.atmosphere];
+    applyAtmosphere(atmo);
+    this.sky.apply(atmo);
+    this.lights.set(course.lights ?? []);
+    const byMat = new Map<MatKey, THREE.BufferGeometry[]>();
     for (const d of descs) {
-      const wall = d.tags.includes('wallrun');
-      const mat = new THREE.MeshLambertMaterial({ color: wall ? 0xe8dcc0 : d.kind === 'ramp' ? 0x8a8f98 : 0x9aa0a8 });
-      this.levelRoot.add(new THREE.Mesh(colliderGeometry(d), mat));
+      const key: MatKey = d.tags.includes('wallrun') ? 'ivory' : d.kind === 'ramp' ? 'grayDark' : 'gray';
+      const g = finalize(colliderGeometry(d), { maxEdge: 3, aoBaseY: d.center[1] - d.half[1] });
+      if (!byMat.has(key)) byMat.set(key, []);
+      byMat.get(key)!.push(g);
     }
-    const bell = new THREE.Mesh(new THREE.ConeGeometry(0.8, 1.2, 8), new THREE.MeshLambertMaterial({ color: 0xc89b3c }));
+    for (const [key, list] of byMat) {
+      const g = merge(list);
+      if (g) this.levelRoot.add(new THREE.Mesh(g, getMaterial(key)));
+    }
+    const bell = new THREE.Mesh(finalize(new THREE.ConeGeometry(0.8, 1.2, 8)), getMaterial('bronze'));
     bell.position.set(course.finish.pos[0], course.finish.pos[1] + 2, course.finish.pos[2]);
     this.levelRoot.add(bell);
     this.wireframe = colliderWireframe(descs);
@@ -190,9 +209,15 @@ export class Game implements DebugHost {
       this.camera.rotation.set(this.input.pitch, this.input.yaw, this.feel.roll);
     }
     const hfov = 90 + this.feel.fovKick;
+    this.camera.aspect = this.pipeline.aspect();
     this.camera.fov = (2 * Math.atan(Math.tan((hfov * Math.PI) / 360) / this.camera.aspect) * 180) / Math.PI;
     this.camera.updateProjectionMatrix();
-    this.renderer.render(this.scene, this.camera);
+    this.sky.follow(this.camera);
+    this.sky.setHorizon(psxUniforms.uFogColor.value);
+    this.time += frameDt;
+    psxUniforms.uTime.value = this.time;
+    this.lights.update(this.time);
+    this.pipeline.render(this.scene, this.camera);
 
     this.fpsAcc += frameDt;
     this.fpsFrames++;
@@ -209,6 +234,25 @@ export class Game implements DebugHost {
 
   private resize(): void {
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);
-    this.camera.aspect = window.innerWidth / window.innerHeight;
+  }
+
+  /** Adds the PSX effect folder to the debug menu. */
+  extendDebug(gui: GUI): void {
+    const f = gui.addFolder('PSX Effect');
+    f.add(psx, 'enabled').name('Enable PSX effect');
+    f.add(psx, 'height', 120, 720, 1).name('Resolution (lines)');
+    f.add(psx, 'aspect', ['4:3', 'fill']).name('Aspect');
+    f.add(psx, 'vertexSnap', 0, 4, 0.05).name('Vertex snap strength');
+    f.add(psx, 'affine').name('Affine textures');
+    f.add(psx, 'dither').name('Bayer dither');
+    f.add(psx, 'ditherStrength', 0, 3, 0.05).name('Dither strength');
+    f.add(psx, 'colorBits', 2, 8, 1).name('Colour depth (bits/ch)');
+    f.add(psx, 'vignette', 0, 1.5, 0.01).name('Vignette');
+    const fog = { color: '#' + psxUniforms.uFogColor.value.getHexString() };
+    f.add(psxUniforms.uFogNear, 'value', 0, 200, 0.5).name('Fog near').listen();
+    f.add(psxUniforms.uFogFar, 'value', 5, 600, 1).name('Fog far').listen();
+    f.addColor(fog, 'color').name('Fog colour').onChange((v: string) => psxUniforms.uFogColor.value.set(v));
+    f.add(psxUniforms.uHeightFogTop, 'value', -60, 80, 0.5).name('Pit fog height').listen();
+    f.close();
   }
 }

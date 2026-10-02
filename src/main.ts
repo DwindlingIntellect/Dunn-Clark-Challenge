@@ -1,3 +1,4 @@
+import './render/colorMode';
 import { initPhysics } from './sim/collision';
 import { Game } from './game/game';
 
