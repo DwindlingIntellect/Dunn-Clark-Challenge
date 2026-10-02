@@ -1,1 +1,151 @@
-# Dunn-Clark-Challenge
+# Ashen Spire
+
+A gothic, PS1-styled first-person parkour time trial built with three.js. Sprint, slide, wall-run,
+cling and mantle through six fog-drowned courses, from the narthex of a ruined cathedral to a bell
+above the clouds. Every course has a safe route and at least one risky shortcut. Gold needs the shortcut.
+
+Everything is generated in code: geometry, 64×64 textures, lighting and synthesized audio. There are
+no model, image or sound files.
+
+## Install and run
+
+Requires Node.js 20 or newer.
+
+```bash
+npm install
+npm run dev        # start the dev server, then open http://localhost:5173
+npm run build      # type-check and produce a static build in dist/
+npm run preview    # serve the production build
+npm test           # run all tests (controller, course validation, routes, smoke, fuzz)
+npm run record     # re-record the course 1 input sequence used by the smoke test
+```
+
+Click into the game to capture the mouse. Audio starts after your first click or key press, as
+browsers require.
+
+## Controls
+
+| Input | Action |
+| --- | --- |
+| Mouse | Look (click to capture the pointer) |
+| W A S D | Move |
+| Space | Jump (also wall-jump while wall running or clinging) |
+| Shift or C | Crouch / slide |
+| R | Restart the course instantly |
+| Esc | Pause menu (resume, restart, course select, sensitivity, FOV, volume, quit) |
+| ~ (Backquote) or F1 | Debug menu |
+| Enter | On the results screen, go to the next course |
+
+## How to play
+
+- The timer starts on your first movement input and stops when you touch the bell, which tolls.
+- Lanterns are checkpoints. Running past one lights it. If you fall below a course's kill height, you
+  respawn at the last lantern you lit and the timer keeps running. R restarts the whole course.
+- Courses unlock in order. Best times and medals are saved in your browser.
+
+### The movement kit
+
+| Move | How |
+| --- | --- |
+| Run | 10 m/s top speed with snappy acceleration. |
+| Jump | About 1.5 m high. Coyote time and jump buffering forgive early or late presses. |
+| Slide | Press crouch at 6 m/s or more for a speed boost. Friction is low; downhill slopes speed you up. Jump out of a slide to keep the momentum. |
+| Wall run | Jump at a pale ivory, gold-trimmed wall while holding forward at speed. Lasts up to 1.4 s and sinks faster toward the end. Press Space to kick off it. |
+| Cling and climb | Jump into any wall while facing it and holding forward. You climb briefly, then hang. Once per jump. |
+| Mantle | Press forward into a ledge within reach of your hands (about 2.7 m above your feet when standing) and you pull yourself up. Candle-lined ledges mark the intended ones. |
+| Air control | Steer freely in the air. Speed you already have is never lost to steering. |
+
+**Visual language.** Ivory stone with gold trim is wall-runnable. Ledges lined with lit candles are
+built for mantling and climbing. Anything that falls away into thick fog is a death pit.
+
+## Tuning movement with the debug menu
+
+1. Press **~** (or F1) during a run. The game pauses, the mouse is released, and the run is marked
+   *debug*: it will never save a best time.
+2. Open **Movement (movement.ts)**. Every value in `src/config/movement.ts` is live-editable, grouped
+   into Ground, Air, Jump, Slide, Wall Run, Cling/Mantle, Camera and Body. Close the menu with ~ to
+   try your changes.
+3. **Save tuning (browser)** and **Load tuning (browser)** keep your work in localStorage between
+   sessions. **Reset to defaults** restores the shipped values.
+4. When you like the result, press **Copy config as code**. It copies a complete replacement for
+   `src/config/movement.ts`, comments included (if the clipboard is blocked, a text box opens to copy
+   from). Paste it over the file.
+5. Run `npm test`. The course validation tests re-measure what the movement can do with the new
+   values. If a jump on any course is no longer makeable with a 15% margin, the test names it. Re-run
+   `npm run record` if you changed anything that affects course 1.
+
+The debug menu also has the **PSX Effect** controls (master toggle, internal resolution, aspect,
+vertex snap, affine textures, Bayer dither on/off and strength, colour depth, vignette, fog
+near/far/colour, pit fog height). It also has **Course & Tools**: course select including a gray
+test course, teleport to any lantern, a free-fly camera (WASD, Space/C, Shift for speed) and a
+collider wireframe. Readouts show FPS, speed, move state and position.
+
+## Authoring a course
+
+Courses are plain data files in `src/levels/`, one per course (see `course1.ts` and the type
+definitions in `src/levels/types.ts`).
+
+```ts
+export const myCourse: CourseData = {
+  id: 'mycourse', name: 'My Course', flavor: 'One line of flavour text.',
+  atmosphere: 'moonlit',                  // fog/lighting preset (src/render/atmosphere.ts)
+  start: { pos: [0, 0, 0], yaw: 0 },      // yaw in degrees, 0 faces -Z
+  finish: { pos: [0, 0, -60] },           // floor position under the bell
+  checkpoints: [{ pos: [0, 0, -30], yaw: 0 }],
+  killY: -10,
+  medals: { bronze: 30, silver: 22, gold: 15 },
+  pieces: [
+    { id: 'a', type: 'block', pos: [0, -1, -10], size: [6, 1, 24] },
+    { id: 'wall', type: 'block', pos: [-3.5, -10, -28], size: [1, 14, 14], tags: ['wallrun'] },
+    { id: 'b', type: 'block', pos: [0, -1, -45], size: [6, 1, 24] },
+  ],
+  jumpLinks: [{ from: 'a', to: 'b', move: 'wallrun', via: 'wall' }],
+};
+```
+
+**Conventions.** Units are meters and +Y is up. A piece's `pos` is the centre of its bottom face, so
+its top is at `pos[1] + size[1]`. `size` is `[width x, height y, depth z]` before rotation, and `rot`
+is yaw in degrees. `repeat: { count, step }` stamps copies; their ids get `.0`, `.1` and so on.
+
+**Pieces.** `block`, `ramp` and `stairs` (both rise toward local −Z and collide as a smooth slope),
+`roof` (gable along local Z), `walkway` (with balustrades unless tagged `norails`), `pillar`, `arch`
+(the jambs and lintel collide), `windowwall`, and the decorative `buttress`, `rosewindow`, `spire`,
+`lantern` and `candles`. Tag `solid` makes a decorative piece collide; `deco` turns collision off.
+
+**Tags.** `wallrun` gives the ivory and gold look and makes the surface wall-runnable. `mantle` lines
+the top edges with candles. `wood` and `iron` change footstep sounds; `mat` picks the texture.
+
+**Jump links.** List every jump on the intended routes as `{ from, to, move, via?, route? }`. The
+move is `run-jump`, `slide-jump`, `boost-jump` (slide down the `from`/`via` ramp and leap from its
+low edge), `drop`, `mantle`, `climb`, or `wallrun` (with `via` set to the wall). Mark shortcut jumps
+with `route: 'shortcut'`. `npm test` checks that each link is physically makeable with the current
+`movement.ts`, with a 15% margin on both distance and height. The check simulates the real
+controller; it is not a hand-written formula.
+
+**Registering.** Add the course to `COURSES` in `src/levels/index.ts`, and add its path to the
+`import.meta.hot.accept([...])` list there. In `npm run dev`, saving a course file then rebuilds the
+level in place: no page refresh, and you keep your position.
+
+**Routes and medals.** Add autopilot waypoints for the safe route and the shortcut in
+`tests/routes.ts`. The route tests drive the course headlessly and require both routes to finish with
+zero falls. They also require gold to be faster than the safe route and slower than the shortcut. Run
+`ROUTE_LOG=1 npx vitest run tests/routes.test.ts` to print the measured times, then set the medals
+from them.
+
+## Project layout
+
+```
+src/config/      movement.ts (all movement tunables), render.ts (PSX settings)
+src/sim/         deterministic simulation: controller, Rapier collision queries, capabilities, autopilot
+src/game/        game flow, run rules (timer/checkpoints/respawn), camera feel
+src/levels/      course data, collider builder, validation
+src/render/      PSX pipeline and materials, procedural textures, gothic kit, level builder, sky
+src/audio/       Web Audio synthesis
+src/debug/       lil-gui debug menu, free-fly camera, config-to-code
+src/ui/          HUD, menus, styles
+tests/           Vitest suites (+ fixtures and autopilot routes)
+scripts/         dev-only headless screenshot helper (uses a global Playwright install)
+```
+
+The simulation runs at a fixed 120 Hz and is deterministic for a given input stream, so it runs
+headlessly in Node for the tests. Rendering interpolates the camera between simulation steps.
