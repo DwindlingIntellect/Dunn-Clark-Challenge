@@ -17,7 +17,7 @@ export const movement = {
     /** Camera height above the feet while standing. */
     eyeHeight: 1.6,
     /** Capsule height while crouched or sliding. */
-    crouchHeight: 1.0,
+    crouchHeight: 1,
     /** Camera height above the feet while crouched or sliding. */
     crouchEyeHeight: 0.85,
     /** How quickly the camera moves between standing and crouched heights (1/s). */
