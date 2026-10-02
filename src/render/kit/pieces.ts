@@ -25,13 +25,15 @@ function topMat(p: Piece): MatKey {
   return m === 'stone' ? 'flagstone' : (m as MatKey);
 }
 
-/** Gold trim bands along the vertical faces of a wall-runnable box. */
+/** Gold trim on a wall-runnable box: a band under the top edge and pilasters on every vertical edge. */
 function goldTrim(s: PartSink, w: number, h: number, d: number): void {
   const t = 0.05;
   const band = Math.min(0.22, h * 0.08);
-  for (const y of [h - band / 2, 0.9, Math.max(1.0, h * 0.5)]) {
-    if (y > h - band / 2 + 0.01 || y < band) continue;
-    s.add('gold', box(w + 2 * t, band, d + 2 * t, 0, y, 0), { ao: false, maxEdge: 4 });
+  s.add('gold', box(w + 2 * t, band, d + 2 * t, 0, h - band / 2, 0), { ao: false, maxEdge: 4 });
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      s.add('gold', box(0.16, h, 0.16, (sx * w) / 2, h / 2, (sz * d) / 2), { ao: false, maxEdge: 6 });
+    }
   }
 }
 
@@ -54,17 +56,19 @@ function ledgeCandles(s: PartSink, w: number, h: number, d: number): void {
   }
 }
 
-function buildBlock(s: PartSink, p: Piece): void {
+function buildBlock(s: PartSink, p: Piece, faceEdge = 3): void {
   const [w, h, d] = pieceSize(p);
   const { top, sides } = boxSplit(w, h, d, 0, h / 2, 0);
-  s.add(topMat(p), top);
-  s.add(sideMat(p), sides);
+  s.add(topMat(p), top, { maxEdge: faceEdge });
+  s.add(sideMat(p), sides, { maxEdge: faceEdge });
   if (p.tags?.includes('wallrun')) goldTrim(s, w, h, d);
   if (p.tags?.includes('mantle')) ledgeCandles(s, w, h, d);
 }
 
 function buildWindowWall(s: PartSink, p: Piece): void {
-  buildBlock(s, p);
+  // Window walls are mostly seen from afar: coarser subdivision keeps the
+  // triangle count down while affine warping stays mild.
+  buildBlock(s, p, 6);
   const [w, h, d] = pieceSize(p);
   const ww = Math.min(2.2, Math.max(0.8, h * 0.16));
   const count = Math.max(1, Math.floor(w / (ww * 2.4)));
@@ -80,12 +84,12 @@ function buildWindowWall(s: PartSink, p: Piece): void {
       outer.holes.push(new THREE.Path(pointedArchPoints(ww, spring - sill, top - sill).map((v) => new THREE.Vector2(v.x + x, v.y + sill))));
       const frame = extrude(outer, 0.2);
       frame.translate(0, 0, z);
-      s.add(p.tags?.includes('wallrun') ? 'gold' : 'darkstone', frame, { ao: false });
+      s.add(p.tags?.includes('wallrun') ? 'gold' : 'darkstone', frame, { ao: false, maxEdge: 40 });
       const glass = new THREE.ShapeGeometry(pointedArchShape(ww, spring - sill, top - sill, x, sill)).toNonIndexed();
       glass.translate(0, 0, z + side * 0.005);
-      s.add('glass', glass, { ao: false, maxEdge: 2 });
+      s.add('glass', glass, { ao: false, maxEdge: 8 });
       // Mullion
-      s.add('darkstone', box(0.12, top - sill - 0.4, 0.14, x, sill + (top - sill - 0.4) / 2, z), { ao: false });
+      s.add('darkstone', box(0.12, top - sill - 0.4, 0.14, x, sill + (top - sill - 0.4) / 2, z), { ao: false, maxEdge: 12 });
     }
   }
 }
@@ -166,7 +170,7 @@ function buildPillar(s: PartSink, p: Piece): void {
   const r = w / 2;
   const mat = sideMat(p);
   s.add(mat, octagon(r * 1.35, r * 1.45, Math.min(0.6, h * 0.08)));
-  s.add(mat, octagon(r, r, h - Math.min(1.2, h * 0.14), 0, Math.min(0.6, h * 0.08)));
+  s.add(mat, octagon(r, r, h - Math.min(1.2, h * 0.14), 0, Math.min(0.6, h * 0.08)), { maxEdge: 6 });
   s.add(mat, octagon(r * 1.4, r * 1.05, Math.min(0.6, h * 0.06), 0, h - Math.min(0.6, h * 0.06)));
   if (p.tags?.includes('wallrun')) {
     s.add('gold', octagon(r * 1.06, r * 1.06, 0.2, 0, h * 0.5), { ao: false });

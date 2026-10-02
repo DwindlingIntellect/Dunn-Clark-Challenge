@@ -77,10 +77,25 @@ export function backdropPieces(course: CourseData): Piece[] {
   return out;
 }
 
-function addParts(buckets: Map<MatKey, THREE.BufferGeometry[]>, parts: Part[]): void {
+/** Geometry is merged per material *and* per spatial cell so chunks behind the camera are frustum-culled. */
+const CELL = 48;
+type Buckets = Map<string, { mat: MatKey; list: THREE.BufferGeometry[] }>;
+
+function addParts(buckets: Buckets, parts: Part[], at?: [number, number, number]): void {
   for (const p of parts) {
-    if (!buckets.has(p.mat)) buckets.set(p.mat, []);
-    buckets.get(p.mat)!.push(p.geom);
+    let cx = 0;
+    let cz = 0;
+    if (at) {
+      cx = Math.floor(at[0] / CELL);
+      cz = Math.floor(at[2] / CELL);
+    }
+    const key = `${p.mat}|${cx},${cz}`;
+    let b = buckets.get(key);
+    if (!b) {
+      b = { mat: p.mat, list: [] };
+      buckets.set(key, b);
+    }
+    b.list.push(p.geom);
   }
 }
 
@@ -89,7 +104,7 @@ const BELL_PROFILE: [number, number][] = [
   [0.02, 1.6], [0.36, 1.58], [0.46, 1.46], [0.5, 1.2], [0.54, 0.92], [0.64, 0.6], [0.82, 0.3], [1.0, 0.1], [1.06, 0.0], [0.98, 0.04],
 ];
 
-function buildBell(course: CourseData, buckets: Map<MatKey, THREE.BufferGeometry[]>): THREE.Group {
+function buildBell(course: CourseData, buckets: Buckets): THREE.Group {
   const [x, y, z] = course.finish.pos;
   // Frame (static, merged): two posts and a yoke beam with a little roof.
   const frame = new PartSink(pieceMatrix([x, y, z], 0), y);
@@ -97,7 +112,7 @@ function buildBell(course: CourseData, buckets: Map<MatKey, THREE.BufferGeometry
   frame.add('wood', box(0.35, 5, 0.35, 1.9, 2.5, 0));
   frame.add('wood', box(4.4, 0.4, 0.45, 0, 4.9, 0));
   frame.add('slate', box(5, 0.15, 1.6, 0, 5.35, 0), { ao: false });
-  addParts(buckets, frame.parts);
+  addParts(buckets, frame.parts, [x, y, z]);
 
   const pivot = new THREE.Group();
   pivot.position.set(x, y + 4.7, z);
@@ -113,12 +128,12 @@ function buildBell(course: CourseData, buckets: Map<MatKey, THREE.BufferGeometry
 function buildLanterns(course: CourseData): CheckpointLantern[] {
   return course.checkpoints.map((cp) => {
     const group = new THREE.Group();
+    // Hung overhead on a chain so the running line stays clear.
     const sink = new PartSink(new THREE.Matrix4(), 0, 10);
-    sink.add('iron', box(0.12, 2.0, 0.12, 0, 1.0, 0));
-    sink.add('iron', box(0.6, 0.08, 0.08, 0.25, 2.0, 0), { ao: false });
-    sink.add('iron', box(0.2, 0.1, 0.2, 0, 0.05, 0), { ao: false });
-    const glowSink = new PartSink(new THREE.Matrix4().makeTranslation(0.5, 1.45, 0), 0, 10);
-    lanternGeometry(glowSink, 0.36, 0.5, 0);
+    sink.add('iron', box(0.05, 4, 0.05, 0, 4.9, 0), { ao: false });
+    sink.add('iron', box(0.5, 0.06, 0.06, 0, 2.95, 0), { ao: false });
+    const glowSink = new PartSink(new THREE.Matrix4().makeTranslation(0, 2.45, 0), 0, 10);
+    lanternGeometry(glowSink, 0.4, 0.5, 0);
     const glow = createPsxMaterial({ map: 'white', unlit: true, tint: LANTERN_UNLIT });
     for (const part of [...sink.parts, ...glowSink.parts]) {
       group.add(new THREE.Mesh(part.geom, part.mat === 'lanternGlow' ? glow : getMaterial(part.mat)));
@@ -159,15 +174,17 @@ function buildClouds(y: number, cx: number, cz: number): THREE.Mesh {
 
 export function buildLevel(course: CourseData): LevelVisuals {
   const root = new THREE.Group();
-  const buckets = new Map<MatKey, THREE.BufferGeometry[]>();
-  for (const p of expandPieces(course.pieces)) addParts(buckets, buildPiece(p));
-  for (const p of backdropPieces(course)) addParts(buckets, buildPiece(p, 40));
+  const buckets: Buckets = new Map();
+  for (const p of expandPieces(course.pieces)) addParts(buckets, buildPiece(p), p.pos);
+  // The distant backdrop surrounds everything; one chunk per material is enough.
+  for (const p of backdropPieces(course)) addParts(buckets, buildPiece(p, 40), [1e5, 0, 1e5]);
   const bellPivot = buildBell(course, buckets);
   root.add(bellPivot);
 
-  for (const [mat, list] of buckets) {
+  for (const { mat, list } of buckets.values()) {
     const g = merge(list);
     if (!g) continue;
+    g.computeBoundingSphere();
     const mesh = new THREE.Mesh(g, getMaterial(mat));
     mesh.matrixAutoUpdate = false;
     root.add(mesh);
@@ -183,7 +200,7 @@ export function buildLevel(course: CourseData): LevelVisuals {
   const [fx, fy, fz] = course.finish.pos;
   const lights: LightDef[] = [{ pos: [fx, fy + 3, fz], color: 0xffc070, intensity: 1.6, range: 14 }];
   for (const cp of course.checkpoints) {
-    lights.push({ pos: [cp.pos[0], cp.pos[1] + 1.8, cp.pos[2]], color: 0xff9a40, intensity: 1.3, range: 10 });
+    lights.push({ pos: [cp.pos[0], cp.pos[1] + 2.6, cp.pos[2]], color: 0xff9a40, intensity: 1.3, range: 10 });
   }
   lights.push(...(course.lights ?? []));
 
