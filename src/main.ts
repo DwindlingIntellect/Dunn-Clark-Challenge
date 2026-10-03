@@ -17,6 +17,8 @@ async function boot() {
     const editor = installEditor(game);
     // Exposed for debugging and automated screenshots.
     Object.assign(window, { __game: game, __audio: audio, __editor: editor });
+    // `?editor` in the URL (used by the launcher scripts) opens straight into the editor.
+    if (new URLSearchParams(location.search).has('editor')) editor.open();
   }
 }
 

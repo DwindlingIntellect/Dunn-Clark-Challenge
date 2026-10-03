@@ -1,6 +1,7 @@
 import { defineConfig, type Plugin } from 'vitest/config';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Dev-only endpoints used by the level editor to write course files.
@@ -9,7 +10,7 @@ import { resolve } from 'node:path';
  */
 function editorSavePlugin(): Plugin {
   const ID = /^[a-z0-9][a-z0-9_-]{0,40}$/;
-  const levels = resolve(__dirname, 'src/levels');
+  const levels = fileURLToPath(new URL('./src/levels', import.meta.url));
   const readBody = (req: NodeJS.ReadableStream) =>
     new Promise<string>((ok, fail) => {
       let data = '';

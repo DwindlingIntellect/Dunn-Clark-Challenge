@@ -13,7 +13,31 @@ Download [`release/AshenSpire.html`](release/AshenSpire.html) and double-click i
 in that single file and runs offline in Chrome, Edge or Firefox. Click **Begin**, then click into the
 game to capture the mouse.
 
-To rebuild that file after changing the code, run `npm run build:single`.
+It is rebuilt automatically by GitHub Actions on every push to `main`; to rebuild it locally, run
+`npm run build:single`.
+
+## Edit levels with one double-click
+
+The `tools/` folder has launchers that do all the terminal work for you. You need
+[Git](https://git-scm.com/downloads) and [Node.js 20+](https://nodejs.org) installed once.
+
+| Windows | macOS / Linux | What it does |
+| --- | --- | --- |
+| `AshenSpire-Editor.bat` | `AshenSpire-Editor.command` | Downloads the project the first time (into `AshenSpire` in your home folder), updates it from GitHub on later runs, installs dependencies, and opens the level editor in your browser. Keep its window open while you edit. |
+| `AshenSpire-Publish.bat` | `AshenSpire-Publish.command` | Sends your saved level edits to GitHub. It commits only `src/levels`, runs the tests first (and asks before publishing if any fail), then pushes. |
+
+You can download a launcher on its own from GitHub and run it from anywhere; once the project is
+downloaded, the copies in its `tools/` folder use that project directly.
+- **Windows** may show "Windows protected your PC" for a downloaded script. Choose *More info → Run
+  anyway*.
+- **macOS** drops the executable flag on files downloaded through a browser. Run
+  `chmod +x AshenSpire-*.command` once, or start it with `bash AshenSpire-Editor.command`.
+- The first publish asks for a name and email for the commit history, and Git may ask you to sign
+  in to GitHub.
+
+**After every push,** GitHub Actions (`.github/workflows/ci.yml`) runs the tests and rebuilds
+`release/AshenSpire.html`, committing it if it changed. You never need to rebuild the release file
+yourself; the launchers pull that commit before your next edit.
 
 ## Install and run (for development)
 

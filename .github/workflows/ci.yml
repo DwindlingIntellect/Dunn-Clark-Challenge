@@ -1,0 +1,48 @@
+# Runs the tests on every push and pull request. On pushes to main it also
+# rebuilds the double-click release (release/AshenSpire.html) and commits it
+# if it changed, so the downloadable game never goes stale.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Tests (controller, course validation, routes, smoke, fuzz, editor)
+        run: npm test
+
+      - name: Build the single-file release
+        run: npm run build:single
+
+      - name: Commit the refreshed release file
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          if git diff --quiet -- release/AshenSpire.html; then
+            echo "release/AshenSpire.html is already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add release/AshenSpire.html
+          git commit -m "Rebuild release/AshenSpire.html [skip ci]"
+          git push
