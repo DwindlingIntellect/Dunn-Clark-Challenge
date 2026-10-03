@@ -62,6 +62,8 @@ export interface Piece {
   mat?: MaterialName;
   /** Stamp `count` copies, each offset by `step`. Copies get ids `${id}.0`, `${id}.1`, … */
   repeat?: { count: number; step: Vec3 };
+  /** Editor outliner folder (no gameplay effect). */
+  group?: string;
 }
 
 /**

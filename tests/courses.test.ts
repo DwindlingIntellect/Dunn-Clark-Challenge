@@ -3,8 +3,9 @@ import { Vector3 } from 'three';
 import { initPhysics, CollisionWorld } from '../src/sim/collision';
 import { measureCapabilities, reachAt, type Capabilities } from '../src/sim/capabilities';
 import { movement } from '../src/config/movement';
-import { COURSES } from '../src/levels/index';
-import { testCourse } from '../src/levels/testCourse';
+import { allCourses, isCampaign } from '../src/levels/index';
+import { formatCourse } from '../src/levels/format';
+import { readFileSync } from 'node:fs';
 import { courseColliders, expandPieces } from '../src/levels/colliders';
 import { checkLink } from '../src/levels/validate';
 import type { CourseData, Vec3 } from '../src/levels/types';
@@ -34,7 +35,7 @@ function groundBelow(world: CollisionWorld, p: Vec3, maxDrop: number): boolean {
   return !!hit && hit.normal.y > 0.6;
 }
 
-const ALL: CourseData[] = [...COURSES, testCourse];
+const ALL: CourseData[] = allCourses();
 
 describe.each(ALL.map((c) => [c.name, c] as const))('course %s', (_name, course) => {
   it('has a start, a finish bell and checkpoints standing on solid ground', () => {
@@ -60,8 +61,13 @@ describe.each(ALL.map((c) => [c.name, c] as const))('course %s', (_name, course)
     expect(course.flavor.length).toBeGreaterThan(0);
   });
 
+  it('is stored in the canonical file layout', () => {
+    const text = readFileSync(new URL(`../src/levels/courses/${course.id}.json`, import.meta.url), 'utf8');
+    expect(text).toBe(formatCourse(JSON.parse(text)));
+  });
+
   it('every jump link is makeable with a 15% margin, and no required gap exceeds the movement', () => {
-    expect(course.jumpLinks.length).toBeGreaterThan(0);
+    if (isCampaign(course.id)) expect(course.jumpLinks.length).toBeGreaterThan(0);
     const failures: string[] = [];
     for (const link of course.jumpLinks) {
       const r = checkLink(course, link, caps, cfg);
@@ -70,7 +76,7 @@ describe.each(ALL.map((c) => [c.name, c] as const))('course %s', (_name, course)
     expect(failures).toEqual([]);
   });
 
-  if (course.id !== 'test') {
+  if (isCampaign(course.id)) {
     it('has a risky shortcut on top of the safe route', () => {
       expect(course.jumpLinks.some((l) => l.route === 'shortcut')).toBe(true);
       expect(course.jumpLinks.some((l) => (l.route ?? 'safe') === 'safe')).toBe(true);

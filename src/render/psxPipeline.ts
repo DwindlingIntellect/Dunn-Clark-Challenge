@@ -178,6 +178,8 @@ export class PsxPipeline {
     u.uFlash.value = this.flash;
     u.uFlashColor.value.copy(this.flashColor);
     this.viewport.set(rect.x, size.y - rect.y - rect.h, rect.w, rect.h);
+    // autoClear wipes the whole canvas before the post pass: keep the letterbox bars black.
+    r.setClearColor(0x000000, 1);
     r.setViewport(this.viewport);
     r.render(this.postScene, this.postCam);
     r.setViewport(0, 0, size.x, size.y);

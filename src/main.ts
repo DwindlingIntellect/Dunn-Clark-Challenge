@@ -11,8 +11,13 @@ async function boot() {
   const audio = new AudioSystem();
   wireAudio(game, audio);
   game.start();
-  // Exposed for debugging and automated screenshots in dev builds.
-  if (import.meta.env.DEV) Object.assign(window, { __game: game, __audio: audio });
+  if (import.meta.env.DEV) {
+    // The level editor (F2) only exists in dev builds; it saves through the dev server.
+    const { installEditor } = await import('./editor/editor');
+    const editor = installEditor(game);
+    // Exposed for debugging and automated screenshots.
+    Object.assign(window, { __game: game, __audio: audio, __editor: editor });
+  }
 }
 
 function wireAudio(game: Game, audio: AudioSystem): void {

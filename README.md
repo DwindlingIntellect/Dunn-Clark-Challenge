@@ -88,32 +88,86 @@ near/far/colour, pit fog height). It also has **Course & Tools**: course select 
 test course, teleport to any lantern, a free-fly camera (WASD, Space/C, Shift for speed) and a
 collider wireframe. Readouts show FPS, speed, move state and position.
 
+## Level editor
+
+Run `npm run dev`, open the game and press **F2** (from the title screen or during a run). The
+editor opens on the current course; F2 again returns to the game. It exists only in dev builds and
+saves straight into the course files.
+
+| Input | Action |
+| --- | --- |
+| Hold right mouse + move | Look around |
+| W A S D | Fly (Q / C down, E / Space up, Shift faster, mouse wheel changes fly speed) |
+| Left click | Select a piece or marker (Shift/Ctrl+click to add or remove) |
+| Left drag on empty space | Box select |
+| 1 / 2 / 3 | Move / rotate / scale gizmo (rotation is yaw-only, scale is one piece at a time) |
+| F | Frame the selection |
+| Ctrl+D, Delete | Duplicate, delete |
+| Ctrl+Z, Ctrl+Y (or Ctrl+Shift+Z) | Undo, redo |
+| Ctrl+A, Esc | Select all, clear selection |
+| Ctrl+S | Save to `src/levels/courses/<id>.json` |
+| F5 / Shift+F5 | Play the course from its start / from the camera. Press F5 again to come back. |
+| F2 | Leave the editor |
+
+**Panels.**
+- **Toolbar:** course picker, **New course** (creates a file from a template), save, undo/redo,
+  gizmo modes, grid snap, plus **Fog** and **PSX** to preview the real atmosphere and the 240p look.
+  The default editing view is clean and full resolution.
+- **Left:** the piece palette (adds a piece where you are looking) and the outliner. Pieces are
+  grouped into folders by their `group`; each folder can be collapsed or hidden. Hiding is
+  editor-only and handy when cathedral walls are in the way.
+- **Right:** the inspector, for the selection or, with nothing selected, the course settings
+  (name, atmosphere, kill height, medals, backdrop, campaign membership). Below it is the jump-link
+  list.
+
+**Jump links.**
+- Links are drawn in the world: green on the safe route, blue on a shortcut, red when the jump is
+  not makeable with the current movement values.
+- Selecting a piece shows the dashed jump arc for its links.
+- To add a link, select the take-off piece, then the landing piece (then the wall, for wall runs),
+  choose the move, and press **Link selected**. Hover a link in the list to see its numbers.
+
+Play-tests are debug runs and never save times. The red plane is the kill height.
+
 ## Authoring a course
 
-Courses are plain data files in `src/levels/`, one per course (see `course1.ts` and the type
-definitions in `src/levels/types.ts`).
+Courses are JSON files in `src/levels/courses/`, one per course; the editor writes them, and they
+are also easy to edit by hand. `src/levels/campaign.json` lists the campaign courses in unlock
+order. Any other course file is a draft, reachable from the editor and the debug menu's course
+select. Files are written in a fixed layout (one piece per line) so diffs stay readable.
 
-```ts
-export const myCourse: CourseData = {
-  id: 'mycourse', name: 'My Course', flavor: 'One line of flavour text.',
-  atmosphere: 'moonlit',                  // fog/lighting preset (src/render/atmosphere.ts)
-  start: { pos: [0, 0, 0], yaw: 0 },      // yaw in degrees, 0 faces -Z
-  finish: { pos: [0, 0, -60] },           // floor position under the bell
-  checkpoints: [{ pos: [0, 0, -30], yaw: 0 }],
-  killY: -10,
-  medals: { bronze: 30, silver: 22, gold: 15 },
-  pieces: [
-    { id: 'a', type: 'block', pos: [0, -1, -10], size: [6, 1, 24] },
-    { id: 'wall', type: 'block', pos: [-3.5, -10, -28], size: [1, 14, 14], tags: ['wallrun'] },
-    { id: 'b', type: 'block', pos: [0, -1, -45], size: [6, 1, 24] },
+```json
+{
+  "id": "mycourse",
+  "name": "My Course",
+  "flavor": "One line of flavour text.",
+  "atmosphere": "moonlit",
+  "start": { "pos": [0, 0, 0], "yaw": 0 },
+  "finish": { "pos": [0, 0, -60] },
+  "checkpoints": [
+    { "pos": [0, 0, -30], "yaw": 0 }
   ],
-  jumpLinks: [{ from: 'a', to: 'b', move: 'wallrun', via: 'wall' }],
-};
+  "killY": -10,
+  "medals": { "bronze": 30, "silver": 22, "gold": 15 },
+  "pieces": [
+    { "id": "a", "type": "block", "pos": [0, -1, -10], "size": [6, 1, 24], "group": "Start" },
+    { "id": "wall", "type": "block", "pos": [-3.5, -10, -28], "size": [1, 14, 14], "tags": ["wallrun"] },
+    { "id": "b", "type": "block", "pos": [0, -1, -45], "size": [6, 1, 24] }
+  ],
+  "jumpLinks": [
+    { "from": "a", "to": "b", "move": "wallrun", "via": "wall" }
+  ]
+}
 ```
+
+- `atmosphere` is a fog/lighting preset from `src/render/atmosphere.ts`.
+- `yaw` is in degrees; 0 faces −Z.
+- `finish.pos` is the floor position under the bell.
 
 **Conventions.** Units are meters and +Y is up. A piece's `pos` is the centre of its bottom face, so
 its top is at `pos[1] + size[1]`. `size` is `[width x, height y, depth z]` before rotation, and `rot`
 is yaw in degrees. `repeat: { count, step }` stamps copies; their ids get `.0`, `.1` and so on.
+`group` only affects the editor's outliner.
 
 **Pieces.** `block`, `ramp` and `stairs` (both rise toward local −Z and collide as a smooth slope),
 `roof` (gable along local Z), `walkway` (with balustrades unless tagged `norails`), `pillar`, `arch`
@@ -126,18 +180,17 @@ the top edges with candles. `wood` and `iron` change footstep sounds; `mat` pick
 **Jump links.** List every jump on the intended routes as `{ from, to, move, via?, route? }`. The
 move is `run-jump`, `slide-jump`, `boost-jump` (slide down the `from`/`via` ramp and leap from its
 low edge), `drop`, `mantle`, `climb`, or `wallrun` (with `via` set to the wall). Mark shortcut jumps
-with `route: 'shortcut'`. `npm test` checks that each link is physically makeable with the current
-`movement.ts`, with a 15% margin on both distance and height. The check simulates the real
-controller; it is not a hand-written formula.
+with `route: "shortcut"`. `npm test` checks that each link is physically makeable with the current
+`movement.ts`, with a 15% margin on both distance and height; the editor shows the same check live.
+Campaign courses also need at least one shortcut link.
 
-**Registering.** Add the course to `COURSES` in `src/levels/index.ts`, and add its path to the
-`import.meta.hot.accept([...])` list there. In `npm run dev`, saving a course file then rebuilds the
-level in place: no page refresh, and you keep your position.
+**Hot reload.** In `npm run dev`, saving any course file (from the editor or a text editor) rebuilds
+the level in place; new files are picked up automatically.
 
-**Routes and medals.** Add autopilot waypoints for the safe route and the shortcut in
-`tests/routes.ts`. The route tests drive the course headlessly and require both routes to finish with
-zero falls. They also require gold to be faster than the safe route and slower than the shortcut. Run
-`ROUTE_LOG=1 npx vitest run tests/routes.test.ts` to print the measured times, then set the medals
+**Routes and medals.** Optionally add autopilot waypoints for the safe route and the shortcut in
+`tests/routes.ts`. The route tests then drive the course headlessly. Both routes must finish with
+zero falls, and gold must be faster than the safe route and slower than the shortcut. Run
+`ROUTE_LOG=1 npx vitest run tests/routes.test.ts` to print the measured times and set the medals
 from them.
 
 ## Project layout
@@ -146,10 +199,11 @@ from them.
 src/config/      movement.ts (all movement tunables), render.ts (PSX settings)
 src/sim/         deterministic simulation: controller, Rapier collision queries, capabilities, autopilot
 src/game/        game flow, run rules (timer/checkpoints/respawn), camera feel
-src/levels/      course data, collider builder, validation
+src/levels/      course JSON files (courses/), campaign order, collider builder, validation
 src/render/      PSX pipeline and materials, procedural textures, gothic kit, level builder, sky
 src/audio/       Web Audio synthesis
 src/debug/       lil-gui debug menu, free-fly camera, config-to-code
+src/editor/      dev-only level editor (F2)
 src/ui/          HUD, menus, styles
 tests/           Vitest suites (+ fixtures and autopilot routes)
 scripts/         dev-only headless screenshot helper (uses a global Playwright install)

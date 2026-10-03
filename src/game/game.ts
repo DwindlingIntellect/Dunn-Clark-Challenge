@@ -25,7 +25,12 @@ import { Hud } from '../ui/hud';
 import { Menus, type MenuActions } from '../ui/menus';
 import type { SimEvent } from '../sim/types';
 
-export type GameMode = 'title' | 'playing' | 'paused' | 'results';
+export type GameMode = 'title' | 'playing' | 'paused' | 'results' | 'editor';
+
+/** Something that drives the camera and draws while the game is in 'editor' mode. */
+export interface EditorOverlay {
+  frame(dt: number): void;
+}
 
 /** Base mouse sensitivity in radians per pixel (multiplied by the setting). */
 const BASE_SENSITIVITY = 0.0022;
@@ -58,6 +63,10 @@ export class Game implements DebugHost, MenuActions {
   onFrame: ((dt: number, game: Game) => void) | null = null;
 
   mode: GameMode = 'title';
+  /** Set by the dev-only level editor. */
+  overlay: EditorOverlay | null = null;
+  /** Extra HUD hint shown while play-testing from the editor. */
+  playtestHint = '';
   course!: CourseData;
   world!: CollisionWorld;
   player!: PlayerController;
@@ -106,7 +115,7 @@ export class Game implements DebugHost, MenuActions {
     this.course = COURSES[0] ?? allCourses()[0];
     this.debug = new DebugMenu(this);
     onCourseHotUpdate((c) => {
-      if (c.id === this.course.id) this.loadCourse(c, true);
+      if (c.id === this.course.id && this.mode !== 'editor') this.loadCourse(c, true);
     });
   }
 
@@ -124,6 +133,7 @@ export class Game implements DebugHost, MenuActions {
   // ------------------------------------------------------------------ input
 
   private onKey(code: string): void {
+    if (this.mode === 'editor') return;
     if (code === 'Backquote' || code === 'F1') {
       if (this.mode === 'playing' || this.mode === 'paused' || this.debug.open) this.debug.toggle();
       return;
@@ -140,8 +150,9 @@ export class Game implements DebugHost, MenuActions {
 
   // ------------------------------------------------------------- game flow
 
-  private toTitle(): void {
+  toTitle(): void {
     this.mode = 'title';
+    this.levelRoot.visible = true;
     this.input.releaseLock();
     this.hud.show(false);
     this.menus.title();
@@ -238,6 +249,33 @@ export class Game implements DebugHost, MenuActions {
       debug: debugRun,
       hasNext: i >= 0 && i + 1 < COURSES.length && isUnlocked(i + 1, COURSES.map((c) => c.id), this.save),
     });
+  }
+
+  // ---------------------------------------------------------- level editor
+
+  /** Hand the screen to the editor: no menus, no HUD, no simulation, game level hidden. */
+  enterEditorMode(): void {
+    this.mode = 'editor';
+    if (this.debug.open) this.debug.setOpen(false);
+    this.menus.clear();
+    this.hud.show(false);
+    this.input.releaseLock();
+    this.levelRoot.visible = false;
+    this.freeFly = null;
+  }
+
+  /** Play a course straight from the editor (a debug run, never saved). */
+  playtest(course: CourseData, spawn?: { pos: [number, number, number]; yaw: number }): void {
+    this.levelRoot.visible = true;
+    this.loadCourse(structuredClone(course));
+    this.restart();
+    this.run.debug = true;
+    if (spawn) {
+      this.player.reset(spawn.pos, spawn.yaw);
+      this.input.yaw = spawn.yaw;
+      this.input.pitch = 0;
+      this.snapCamera();
+    }
   }
 
   // ------------------------------------------------------------ DebugHost
@@ -411,7 +449,9 @@ export class Game implements DebugHost, MenuActions {
   private render(alpha: number, frameDt: number): void {
     const p = this.player;
     this.time += frameDt;
-    if (this.mode === 'title') {
+    if (this.mode === 'editor' && this.overlay) {
+      this.overlay.frame(frameDt);
+    } else if (this.mode === 'title') {
       this.titleCamera(frameDt);
     } else if (this.freeFly) {
       this.camera.position.copy(this.freeFly.pos);
@@ -451,7 +491,7 @@ export class Game implements DebugHost, MenuActions {
     this.stats.position = p.pos.toArray().map((v) => v.toFixed(1)).join(', ');
     if (this.mode === 'playing' || this.mode === 'paused') {
       this.hud.update(this.run.time, this.run.started, p.horizontalSpeed, this.run.activated, this.run.debug, frameDt);
-      this.hud.setHint(this.mode === 'playing' && !this.input.locked && !this.debug.open ? 'Click to capture the mouse' : '');
+      this.hud.setHint(this.mode === 'playing' && !this.input.locked && !this.debug.open ? 'Click to capture the mouse' : this.playtestHint);
     }
   }
 

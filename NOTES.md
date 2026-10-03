@@ -213,6 +213,60 @@ Medals come from the autopilot's near-optimal route times:
   shows UnifrakturMaguntia, Old English Text MT or another blackletter face if installed, and falls
   back to Palatino with ✠ ornaments.
 
+## Level editor
+
+- **Built into the game (F2), dev builds only.** It shares the renderer, kit, collision and
+  validation code, so what you edit is exactly what you play, and play-testing is instant: F5 from
+  the start, Shift+F5 from the camera, F5 again to return.
+  - `import.meta.env.DEV` gates a dynamic import, so the editor is stripped from production builds
+    and from the single-file release. I verified that no editor code appears in either.
+- **Courses moved from TypeScript to JSON** (`src/levels/courses/*.json`), so the editor can
+  round-trip them losslessly.
+  - The old section comments became `group` labels: the outliner's folders.
+  - The per-course header comments were dropped; course descriptions live in the flavour text and in
+    this file.
+  - Campaign order moved to `src/levels/campaign.json`.
+  - The registry discovers course files with `import.meta.glob`, so new files need no code changes.
+- **Canonical file layout** (`src/levels/format.ts`): fixed key order, numbers rounded to 4
+  decimals, one piece, link or checkpoint per line. A test checks every course file is stored in this
+  layout. Saving an unchanged course is byte-identical, which I verified in the browser.
+- **Saving** goes through a dev-server endpoint (`vite.config.ts`, `apply: 'serve'`). It can only
+  write `src/levels/courses/<id>.json`, with a strict id pattern, and `src/levels/campaign.json`.
+- **Hot reload.** The registry module self-accepts hot updates. Vite only detects this from the
+  literal `import.meta.hot.accept(...)` spelling; calling it through an alias silently caused full
+  page reloads.
+- **Rendering.** The editor renders through the same PSX pipeline at full window aspect and
+  resolution, with no vertex snap, affine mapping or dither, and with fog off. The **Fog** and
+  **PSX** buttons preview the real look.
+  - Window aspect is required because the transform gizmo maps the mouse over the whole canvas, not
+    the 4:3 letterbox.
+- **Performance.** The editor builds one mesh group per piece instead of the game's merged chunks,
+  so edits rebuild only what changed. Drags preview by transforming the existing geometry and
+  rebuild once on release.
+- **Undo** stores JSON snapshots: one step per gesture (gizmo drag, slider drag, text edit), 300
+  steps deep.
+- **Jump links are validated live** with the same code as the tests. Capabilities are measured once
+  when the editor opens (re-open the editor after changing movement values). Selecting a piece shows
+  its links' jump arcs; mantle/climb links show a bar to the highest reachable ledge.
+- **Hidden outliner groups** are editor-only: they are not saved, and hidden pieces can't be
+  clicked.
+- **Routes tests.** Courses without autopilot routes in `tests/routes.ts` (such as new drafts) are
+  skipped by the route tests. Course validation still runs on every course file. The
+  "has a shortcut" and "has jump links" checks apply to campaign courses only.
+- **Also fixed:** the letterbox bars were fog-coloured instead of black whenever the window wasn't
+  4:3. The post pass's auto-clear used the last clear colour.
+
+### Editor known issues and limits
+
+- Rotation is yaw-only (the whole kit is yaw-only). Scaling works on one piece at a time; multiple
+  selections can be moved and rotated together.
+- Pieces can't be reordered in the outliner (file order), and checkpoint order is creation order.
+- The new-course flow uses the browser's `prompt()` dialogs.
+- Creating a course with the id of a course file deleted earlier in the same dev-server session
+  triggers a full page reload (Vite keeps a stale entry for the old file). The file is still saved.
+- Editing movement values in the debug menu doesn't refresh the editor's link validation until the
+  page is reloaded.
+
 ## Audio
 
 - Synthesized with Web Audio:

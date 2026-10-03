@@ -172,6 +172,17 @@ function buildClouds(y: number, cx: number, cz: number): THREE.Mesh {
   return m;
 }
 
+/** The real point lights of a course: bell, checkpoint lanterns, then authored lights (max 8). */
+export function courseLights(course: CourseData): LightDef[] {
+  const [fx, fy, fz] = course.finish.pos;
+  const lights: LightDef[] = [{ pos: [fx, fy + 3, fz], color: 0xffc070, intensity: 1.6, range: 14 }];
+  for (const cp of course.checkpoints) {
+    lights.push({ pos: [cp.pos[0], cp.pos[1] + 2.6, cp.pos[2]], color: 0xff9a40, intensity: 1.3, range: 10 });
+  }
+  lights.push(...(course.lights ?? []));
+  return lights.slice(0, MAX_LIGHTS);
+}
+
 export function buildLevel(course: CourseData): LevelVisuals {
   const root = new THREE.Group();
   const buckets: Buckets = new Map();
@@ -197,18 +208,13 @@ export function buildLevel(course: CourseData): LevelVisuals {
   const atmo = ATMOSPHERES[course.atmosphere];
   if (atmo.cloudY !== undefined) root.add(buildClouds(atmo.cloudY, course.finish.pos[0], course.finish.pos[2]));
 
-  const [fx, fy, fz] = course.finish.pos;
-  const lights: LightDef[] = [{ pos: [fx, fy + 3, fz], color: 0xffc070, intensity: 1.6, range: 14 }];
-  for (const cp of course.checkpoints) {
-    lights.push({ pos: [cp.pos[0], cp.pos[1] + 2.6, cp.pos[2]], color: 0xff9a40, intensity: 1.3, range: 10 });
-  }
-  lights.push(...(course.lights ?? []));
+  const lights = courseLights(course);
 
   return {
     root,
     lanterns,
     bellPivot,
-    lights: lights.slice(0, MAX_LIGHTS),
+    lights,
     dispose() {
       root.traverse((o) => {
         if (o instanceof THREE.Mesh) o.geometry.dispose();
